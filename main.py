@@ -12,7 +12,7 @@ from computation_stuff import total_risk
 load_dotenv()
 Your_Name = os.getenv("USER_NAME", "DEF_NAME")
 
-# DATABASE SETUP AND SAVE
+# DATABASE SETUP AND SAVE AND LOAD
 # This would be useful for the chart later
 def save_to_db(rows):
     conn = sqlite3.connect("network_logs.db")
@@ -64,6 +64,7 @@ def load_history():
     conn.close()
     return dff
 
+# DATA RETRIVAL STUFF
 def get_connections():
     rows = []
     for conn in psutil.net_connections(kind="inet"):
@@ -104,15 +105,117 @@ def get_connections():
 
 
 # THE STREAMLIT INTERFACE
+
+# INTRO
 st.set_page_config(page_title="Network Monitor", page_icon="🛡️", layout="wide")
 st.title("Welcome "+ Your_Name + "!")
 now = datetime.now()
 st.subheader("Here's a snapshot of your network activity, taken at exactly " + now.strftime("%Y-%m-%d %H:%M:%S"))
-
 df = get_connections()
 
+# MAIN DASHBOARD STUFF
 if df.empty:
     st.info("No active network connections found. Try something else, maybe the API is messing up")
 
 else:
     col1, col2 = st.columns(2)
+
+    # Helper vars
+    safe_count = (df["Risk"] == "Usual Systems").sum()
+    suspicious_count = (df["Risk"] == "Approach with Caution").sum()
+    malicious_count = (df["Risk"] == "Likely Malicious").sum()
+
+    risk_data = pd.DataFrame({
+        "Category" : ["Usual Systems", "Approach with Caution", "Likely Malicious"],
+        "Count" : [safe_count, suspicious_count, malicious_count]
+    })
+
+    # CHARTS: PIE FIRST THEN BAR
+    pie_chart = px.pie(
+        risk_data,
+        values="Count",
+        names="Category",
+        title="Risk Distribution",
+        color="Category",
+        color_discrete_map={
+            "Usual Systems": "green",
+            "Approach with Caution": "orange",
+            "Likely Malicious": "red"
+        }
+    )
+
+    # THEN BAR
+    df_counts = df["Process"].value_counts().reset_index()
+    df_counts.columns = ["Process", "Connections"]
+    bar_chart = px.bar(df_counts, x="Process", y="Connections", title="Connections by Process")
+
+
+    with col1:
+        st.plotly_chart(pie_chart, use_container_width=True)
+
+    with col2:
+        st.plotly_chart(bar_chart, use_container_width=True)
+
+
+    # OVERVIEW
+    # More stats, but also state most rec remote address, like who's the comp talking to the most
+    st.header("Risk Overview")
+
+    # 1.Metric slide
+    col1, col2, col3, col4 = st.columns(4)
+    top_remote = df["Remote Address"].value_counts().idxmax()
+    count = df["Remote Address"].value_counts().max()
+
+    col1.metric("Usual Systems", safe_count)
+    col2.metric("Approach with Caution", suspicious_count)
+    col3.metric("Likely Malicious", malicious_count)
+    col4.metric("Most Recurring Remote", top_remote, f"{count} connections")
+
+    # 2.Table
+    # The Table Color settings, then the table
+    # TODO: More expo for ports
+    st.header("Processes Captured")
+    st.write(" This all the process connections that were happening at that time stamp. Note they happen fast and some disappear as quick as they came. So snapshots tend to not be the same.")
+    def highlight_risk(val):
+        if "Usual Systems" in val: return "color: green; font-weight: bold;"
+        if "Approach with Caution" in val: return "color: orange; font-weight: bold;"
+        if "Likely Malicious" in val: return "color: red; font-weight: bold;"
+        return ""
+
+    st.dataframe(
+        df.style.applymap(highlight_risk, subset=["Risk"]),
+        use_container_width=True
+    )
+
+    # 3. TimeLine Trend
+    st.subheader("Timeline Trends")
+    st.write(" This chart shows your connections overtime PER category. That is, 'how many connections of that risk level occurred in that time bucket.' If at 2025-09-21 01:05 you had 12 Safe, "
+             "2 Suspicious, 1 Malicious, then count = 12, 2, 1 for each risk category. Although this means the more you keep spamming this program, the more screenshots "
+             "you get and of course, the bigger the database. Count is, well count, and ts is the timestamp. A smalll observation I made is that the 2 lines below (thankfully everything but NOT Likely Malicious) indicate that there are invisible, unknown processes the usual ones may talk to, as they follow a similar trend line, just with a different number of connections." )
+
+    hist_df = load_history()
+    if hist_df.empty:
+        st.info("No history logged yet. Try again??")
+    else:
+
+        hist_df["ts"] = pd.to_datetime(hist_df["ts"])
+
+        hist_summary = (
+            hist_df.groupby([pd.Grouper(key="ts", freq="1min"), "risk"])
+            .size()
+            .reset_index(name="count")
+        )
+
+        fig_hist = px.line(
+            hist_summary,
+            x="ts",
+            y="count",
+            color="risk",
+            title="Risk Levels Over Time",
+            color_discrete_map={
+                "Usual Systems": "green",
+                "Approach with Caution": "orange",
+                "Likely Malicious": "red"
+            }
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
