@@ -7,7 +7,7 @@ from datetime import datetime
 import plotly.express as px
 from dotenv import load_dotenv
 from datetime import datetime
-from computation_stuff import total_risk
+from computation_stuff import total_risk, DEMO_MODE, generate_demo_data
 
 load_dotenv()
 Your_Name = os.getenv("USER_NAME", "DEF_NAME")
@@ -66,39 +66,46 @@ def load_history():
 
 # DATA RETRIVAL STUFF
 def get_connections():
-    rows = []
-    for conn in psutil.net_connections(kind="inet"):
-        if conn.raddr:
-            pid = conn.pid
-            try:
-                proc = psutil.Process(pid).name() if pid else "Unknown"
-            except Exception:
-                proc = "Unknown"
+    if DEMO_MODE:
+        rows = generate_demo_data(100)
+        return pd.DataFrame(rows)
+    else:
+        rows = []
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.raddr:
+                pid = conn.pid
+                try:
+                    proc_name = psutil.Process(pid).name() if pid else "Unknown"
+                    proc_loc = psutil.Process(pid).exe() if pid else "Unknown"
+                except Exception:
+                    proc_name = "Unknown"
+                    proc_loc = "Unknown Location"
 
-            local = f"{conn.laddr.ip}:{conn.laddr.port}"
-            remote_ip = conn.raddr.ip
-            remote = f"{conn.raddr.ip}:{conn.raddr.port}"
-            status = conn.status
-            risk_score, risk_label, extra = total_risk(remote_ip)
+                local = f"{conn.laddr.ip}:{conn.laddr.port}"
+                remote_ip = conn.raddr.ip
+                remote = f"{conn.raddr.ip}:{conn.raddr.port}"
+                status = conn.status
+                risk_score, risk_label, extra = total_risk(remote_ip)
 
-            rows.append({
-                "Process": proc,
-                "Local Address": local,
-                "Remote Address": remote,
-                "Country Code": extra.get("country", ""),
-                "Domain": extra.get("domain", ""),
-                "ISP": extra.get("isp", ""),
-                "Total Reports": extra.get("reports", 0),
-                "Last Reported At": extra.get("lastReported", ""),
-                "Status": status,
-                "Risk": risk_label,
-                "Risk Score": risk_score
-            })
+                rows.append({
+                    "Process": proc_name,
+                    "Local Address": local,
+                    "Remote Address": remote,
+                    "Path Location": proc_loc,
+                    "Country Code": extra.get("country", ""),
+                    "Domain": extra.get("domain", ""),
+                    "ISP": extra.get("isp", ""),
+                    "Total Reports": extra.get("reports", 0),
+                    "Last Reported At": extra.get("lastReported", ""),
+                    "Status": status,
+                    "Risk": risk_label,
+                    "Risk Score": risk_score
+                })
 
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        save_to_db(df.to_dict(orient="records"))
-    return df
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            save_to_db(df.to_dict(orient="records"))
+        return df
 
 
 
@@ -107,7 +114,7 @@ def get_connections():
 # THE STREAMLIT INTERFACE
 
 # INTRO
-st.set_page_config(page_title="Network Monitor", page_icon="🛡️", layout="wide")
+st.set_page_config(page_title="Securea Network Monitor", layout="wide")
 st.title("Welcome "+ Your_Name + "!")
 now = datetime.now()
 st.subheader("Here's a snapshot of your network activity, taken at exactly " + now.strftime("%Y-%m-%d %H:%M:%S"))
@@ -160,6 +167,15 @@ else:
     # OVERVIEW
     # More stats, but also state most rec remote address, like who's the comp talking to the most
     st.header("Risk Overview")
+    # A fun little greeting header
+    if malicious_count >= 1:
+        message = "Uh oh, seems to be trouble a brew, check it out ASAP!"
+    elif suspicious_count >= 1:
+        message = "Seems to be business as usual, just a few things to be cautious about."
+    else:
+        message = "All good here! Wow!"
+    st.subheader(message)
+
 
     # 1.Metric slide
     col1, col2, col3, col4 = st.columns(4)
@@ -170,6 +186,36 @@ else:
     col2.metric("Approach with Caution", suspicious_count)
     col3.metric("Likely Malicious", malicious_count)
     col4.metric("Most Recurring Remote", top_remote, f"{count} connections")
+
+    # Markdown colors. Can't decide which look better, but I'll go with the above for now
+    # col1.markdown(f"""
+    #     <div style='text-align:center;'>
+    #         <span style='font-weight:bold;'>Usual Systems</span><br>
+    #         <span style='color:green; font-size:36px;'>{safe_count}</span>
+    #     </div>
+    # """, unsafe_allow_html=True)
+    #
+    # col2.markdown(f"""
+    #     <div style='text-align:center;'>
+    #         <span style='font-weight:bold;'>Approach with Caution</span><br>
+    #         <span style='color:orange; font-size:36px;'>{suspicious_count}</span>
+    #     </div>
+    # """, unsafe_allow_html=True)
+    #
+    # col3.markdown(f"""
+    #     <div style='text-align:center;'>
+    #         <span style='font-weight:bold;'>Likely Malicious</span><br>
+    #         <span style='color:red; font-size:36px;'>{malicious_count}</span>
+    #     </div>
+    # """, unsafe_allow_html=True)
+    #
+    # col4.markdown(f"""
+    #     <div style='text-align:center;'>
+    #         <span style='font-weight:bold;'>Most Recurring Remote</span><br>
+    #         <span style='color:#87CEEB; font-size:36px;'>{top_remote} </span>
+    #         <span style='color:#87CEEB; font-size:12px;'>({count} connections)</span>
+    #     </div>
+    # """, unsafe_allow_html=True)
 
     # 2.Table
     # The Table Color settings, then the table
@@ -191,8 +237,12 @@ else:
     st.subheader("Timeline Trends")
     st.write(" This chart shows your connections overtime PER category. That is, 'how many connections of that risk level occurred in that time bucket.' If at 2025-09-21 01:05 you had 12 Safe, "
              "2 Suspicious, 1 Malicious, then count = 12, 2, 1 for each risk category. Although this means the more you keep spamming this program, the more screenshots "
-             "you get and of course, the bigger the database. Count is, well count, and ts is the timestamp. A smalll observation I made is that the 2 lines below (thankfully everything but NOT Likely Malicious) indicate that there are invisible, unknown processes the usual ones may talk to, as they follow a similar trend line, just with a different number of connections." )
+             "you get and of course, the bigger the database. Count is, well, count, and ts is the timestamp. A small observation I made is that the 2 lines below (thankfully everything but NOT Likely Malicious) indicate that there are invisible, unknown processes the usual ones may talk to, as they follow a similar trend line, just with a different number of connections." )
 
+    # if not DEMO_MODE:
+    #     hist_df = load_history()
+    # else:
+    #     hist_df = pd.DataFrame()
     hist_df = load_history()
     if hist_df.empty:
         st.info("No history logged yet. Try again??")
