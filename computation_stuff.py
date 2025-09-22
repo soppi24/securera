@@ -9,7 +9,7 @@ from functools import lru_cache
 import random
 
 # Setup Stuff
-DEMO_MODE = True
+DEMO_MODE = False
 load_dotenv()
 API_KEY = os.getenv("ABUSEIPDB_KEY", "")
 
@@ -41,25 +41,25 @@ def abuseipdb_lookup(ip: str) -> dict:
         if not API_KEY or is_private(ip) or ip.startswith("127."):
             return {"abuseConfidenceScore": 0}
 
-        # try:
-        #     resp = requests.get(
-        #         "https://api.abuseipdb.com/api/v2/check",
-        #         params={"ipAddress": ip, "maxAgeInDays": 90},
-        #         headers={"Key": API_KEY, "Accept": "application/json"},
-        #         timeout=3,
-        #     )
-        #     data = resp.json().get("data", {})
-        #     return {
-        #         "score": data.get("abuseConfidenceScore", 0),
-        #         "country": data.get("countryCode", "Unknown"),
-        #         "domain": data.get("domain", "Unknown"),
-        #         "isp": data.get("isp", "Unknown"),
-        #         "reports": data.get("totalReports", 0),
-        #         "lastReported": data.get("lastReportedAt", "Never")
-        #     }
-        # except Exception as e:
-        #     return {"error": str(e)}
-        return None
+        try:
+            resp = requests.get(
+                "https://api.abuseipdb.com/api/v2/check",
+                params={"ipAddress": ip, "maxAgeInDays": 90},
+                headers={"Key": API_KEY, "Accept": "application/json"},
+                timeout=3,
+            )
+            data = resp.json().get("data", {})
+            return {
+                "score": data.get("abuseConfidenceScore", 0),
+                "country": data.get("countryCode", "Unknown"),
+                "domain": data.get("domain", "Unknown"),
+                "isp": data.get("isp", "Unknown"),
+                "reports": data.get("totalReports", 0),
+                "lastReported": data.get("lastReportedAt", "Never")
+            }
+        except Exception as e:
+            return {"error": str(e)}
+
 
 
 # Here it combines the basic/predicted risk and adds to the risk Abuse

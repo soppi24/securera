@@ -10,7 +10,11 @@ from datetime import datetime
 from computation_stuff import total_risk, DEMO_MODE, generate_demo_data
 
 load_dotenv()
-Your_Name = os.getenv("USER_NAME", "DEF_NAME")
+your_name = os.getenv("USER_NAME")
+default_name = os.getenv("DEF_NAME", "Stranger")
+if not your_name:
+    your_name = default_name
+
 
 # DATABASE SETUP AND SAVE AND LOAD
 # This would be useful for the chart later
@@ -115,7 +119,7 @@ def get_connections():
 
 # INTRO
 st.set_page_config(page_title="Securea Network Monitor", layout="wide")
-st.title("Welcome "+ Your_Name + "!")
+st.title("Welcome "+ your_name + "!")
 now = datetime.now()
 st.subheader("Here's a snapshot of your network activity, taken at exactly " + now.strftime("%Y-%m-%d %H:%M:%S"))
 df = get_connections()
@@ -239,13 +243,13 @@ else:
              "2 Suspicious, 1 Malicious, then count = 12, 2, 1 for each risk category. Although this means the more you keep spamming this program, the more screenshots "
              "you get and of course, the bigger the database. Count is, well, count, and ts is the timestamp. A small observation I made is that the 2 lines below (thankfully everything but NOT Likely Malicious) indicate that there are invisible, unknown processes the usual ones may talk to, as they follow a similar trend line, just with a different number of connections." )
 
-    # if not DEMO_MODE:
-    #     hist_df = load_history()
-    # else:
-    #     hist_df = pd.DataFrame()
-    hist_df = load_history()
+    if not DEMO_MODE:
+        hist_df = load_history()
+    else:
+        hist_df = pd.DataFrame()
+
     if hist_df.empty:
-        st.info("No history logged yet. Try again??")
+        st.info("No history logged yet. Try again?? Although it's likely you're using the demo, which has limited compatibilities when it comes to this chart, Sorry!")
     else:
 
         hist_df["ts"] = pd.to_datetime(hist_df["ts"])
