@@ -9,7 +9,7 @@ from functools import lru_cache
 import random
 
 # Setup Stuff
-DEMO_MODE = False
+DEMO_MODE = True
 load_dotenv()
 API_KEY = os.getenv("ABUSEIPDB_KEY", "")
 
